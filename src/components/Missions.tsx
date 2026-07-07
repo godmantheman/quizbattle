@@ -655,6 +655,7 @@ const LockerCipherMission: React.FC<{
 
   const handleLockerBtn = (idx: number) => {
     if (isPlayingPattern) return; // ignore clicks while playing pattern
+    if (userInputRef.current.length >= pattern.length) return; // already matched fully
 
     const now = Date.now();
     if (now - lastActionTime.current < 100) return;
@@ -1071,6 +1072,7 @@ const AscendingNumbersMission: React.FC<{
 
   const handleNumClick = (num: number) => {
     if (clickedSetRef.current.has(num)) return; // already clicked
+    if (clickedSetRef.current.size >= sorted.length) return; // already completed
 
     const now = Date.now();
     if (now - lastActionTime.current < 100) return;
