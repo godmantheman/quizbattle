@@ -98,6 +98,12 @@ const PalmScanMission: React.FC<{
   const timerRef = useRef<number | null>(null);
   const startEpoch = useRef<number>(0);
   const requiredTime = mission.data.requiredTime || 2000;
+  const completedRef = useRef(false);
+  const mountTime = useRef(Date.now());
+
+  useEffect(() => {
+    mountTime.current = Date.now();
+  }, [mission.id]);
 
   useEffect(() => {
     if (isPressing) {
@@ -113,7 +119,10 @@ const PalmScanMission: React.FC<{
 
         if (elapsed >= requiredTime) {
           clearInterval(interval);
-          onComplete();
+          if (!completedRef.current) {
+            completedRef.current = true;
+            onComplete();
+          }
         } else {
           timerRef.current = requestAnimationFrame(update);
         }
@@ -129,6 +138,7 @@ const PalmScanMission: React.FC<{
   }, [isPressing]);
 
   const handleStart = (e: React.MouseEvent | React.TouchEvent) => {
+    if (Date.now() - mountTime.current < 400) return;
     e.preventDefault();
     setIsPressing(true);
     startEpoch.current = Date.now();
@@ -234,17 +244,27 @@ const GugudanMission: React.FC<{
 }> = ({ mission, onComplete, onFail, color }) => {
   const { num1, num2, choices, correctAnswer } = mission.data;
   const lastActionTime = useRef(0);
+  const completedRef = useRef(false);
+  const mountTime = useRef(Date.now());
+
+  useEffect(() => {
+    mountTime.current = Date.now();
+  }, [mission.id]);
 
   const handleChoice = (val: number) => {
+    if (completedRef.current) return;
+    if (Date.now() - mountTime.current < 400) return;
     const now = Date.now();
     if (now - lastActionTime.current < 250) return;
     lastActionTime.current = now;
 
     if (val === correctAnswer) {
       playSound('correct');
+      completedRef.current = true;
       onComplete();
     } else {
       playSound('wrong');
+      completedRef.current = true;
       onFail();
     }
   };
@@ -307,16 +327,26 @@ const EraseChalkMission: React.FC<{
   const [erased, setErased] = useState<Record<number, boolean>>({});
   const totalBlocks = mission.data.totalBlocks || 16;
   const blocksArray = Array.from({ length: totalBlocks }, (_, i) => i);
+  const completedRef = useRef(false);
+  const mountTime = useRef(Date.now());
+
+  useEffect(() => {
+    mountTime.current = Date.now();
+  }, [mission.id]);
 
   // Mark block as erased when mouse/finger enters
   const handleErase = (id: number) => {
+    if (completedRef.current) return;
+    if (Date.now() - mountTime.current < 400) return;
     if (!erased[id]) {
       setErased(prev => {
+        if (completedRef.current) return prev;
         const next = { ...prev, [id]: true };
         playSound('erase');
 
         // Check if 100% erased
         if (Object.keys(next).length === totalBlocks) {
+          completedRef.current = true;
           setTimeout(() => {
             playSound('correct');
             onComplete();
@@ -425,13 +455,23 @@ const BellChimeMission: React.FC<{
   const [taps, setTaps] = useState(0);
   const requiredTaps = mission.data.requiredTaps || 15;
   const [isSwinging, setIsSwinging] = useState(false);
+  const completedRef = useRef(false);
+  const mountTime = useRef(Date.now());
+
+  useEffect(() => {
+    mountTime.current = Date.now();
+  }, [mission.id]);
 
   const handleTap = () => {
+    if (completedRef.current) return;
+    if (Date.now() - mountTime.current < 400) return;
     playSound('bell');
     setIsSwinging(true);
     setTaps(prev => {
+      if (completedRef.current) return prev;
       const next = prev + 1;
       if (next >= requiredTaps) {
+        completedRef.current = true;
         setTimeout(() => {
           playSound('correct');
           onComplete();
@@ -516,10 +556,18 @@ const TrashSortMission: React.FC<{
   const currentIndexRef = useRef(0);
   const items = mission.data.items;
   const lastActionTime = useRef(0);
+  const completedRef = useRef(false);
+  const mountTime = useRef(Date.now());
+
+  useEffect(() => {
+    mountTime.current = Date.now();
+  }, [mission.id]);
 
   const currentItem = items[currentIndex];
 
   const handleSort = (selectedType: string) => {
+    if (completedRef.current) return;
+    if (Date.now() - mountTime.current < 400) return;
     const now = Date.now();
     if (now - lastActionTime.current < 100) return;
     lastActionTime.current = now;
@@ -535,10 +583,12 @@ const TrashSortMission: React.FC<{
       setCurrentIndex(nextIdx);
 
       if (nextIdx >= items.length) {
+        completedRef.current = true;
         onComplete();
       }
     } else {
       playSound('wrong');
+      completedRef.current = true;
       onFail();
     }
   };
@@ -623,6 +673,12 @@ const LockerCipherMission: React.FC<{
   const [isPlayingPattern, setIsPlayingPattern] = useState(true);
   const [activeButton, setActiveButton] = useState<number | null>(null);
   const lastActionTime = useRef(0);
+  const completedRef = useRef(false);
+  const mountTime = useRef(Date.now());
+
+  useEffect(() => {
+    mountTime.current = Date.now();
+  }, [mission.id]);
 
   // Play pattern on start or retry
   useEffect(() => {
@@ -631,6 +687,7 @@ const LockerCipherMission: React.FC<{
       setIsPlayingPattern(true);
       setUserInput([]);
       userInputRef.current = [];
+      completedRef.current = false;
       
       // Delay before starting pattern display
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -655,6 +712,8 @@ const LockerCipherMission: React.FC<{
 
   const handleLockerBtn = (idx: number) => {
     if (isPlayingPattern) return; // ignore clicks while playing pattern
+    if (completedRef.current) return;
+    if (Date.now() - mountTime.current < 400) return;
     if (userInputRef.current.length >= pattern.length) return; // already matched fully
 
     const now = Date.now();
@@ -670,6 +729,7 @@ const LockerCipherMission: React.FC<{
     const currentStepIdx = newInput.length - 1;
     if (newInput[currentStepIdx] !== pattern[currentStepIdx]) {
       playSound('wrong');
+      completedRef.current = true;
       // Reset on failure
       userInputRef.current = [];
       setUserInput([]);
@@ -679,6 +739,7 @@ const LockerCipherMission: React.FC<{
 
     // Pattern matched fully
     if (newInput.length === pattern.length) {
+      completedRef.current = true;
       setTimeout(() => {
         playSound('correct');
         onComplete();
@@ -765,12 +826,22 @@ const PencilSharpenMission: React.FC<{
 }> = ({ mission, onComplete, color, btnCol }) => {
   const [spins, setSpins] = useState(0);
   const requiredSpins = mission.data.requiredSpins || 12;
+  const completedRef = useRef(false);
+  const mountTime = useRef(Date.now());
+
+  useEffect(() => {
+    mountTime.current = Date.now();
+  }, [mission.id]);
 
   const handleSpin = () => {
+    if (completedRef.current) return;
+    if (Date.now() - mountTime.current < 400) return;
     playSound('tap');
     setSpins(prev => {
+      if (completedRef.current) return prev;
       const next = prev + 1;
       if (next >= requiredSpins) {
+        completedRef.current = true;
         setTimeout(() => {
           playSound('correct');
           onComplete();
@@ -864,13 +935,23 @@ const CatchFliesMission: React.FC<{
   const initialFlies = mission.data.flies;
   const [flies, setFlies] = useState<any[]>(initialFlies);
   const [deadCount, setDeadCount] = useState(0);
+  const completedRef = useRef(false);
+  const mountTime = useRef(Date.now());
+
+  useEffect(() => {
+    mountTime.current = Date.now();
+  }, [mission.id]);
 
   const handleFlyTap = (id: number) => {
+    if (completedRef.current) return;
+    if (Date.now() - mountTime.current < 400) return;
     playSound('tap');
     setFlies(prev => prev.filter(f => f.id !== id));
     setDeadCount(prev => {
+      if (completedRef.current) return prev;
       const next = prev + 1;
       if (next >= initialFlies.length) {
+        completedRef.current = true;
         setTimeout(() => {
           playSound('correct');
           onComplete();
@@ -944,8 +1025,16 @@ const LunchTrayMission: React.FC<{
   const [served, setServed] = useState<any[]>([]);
   const servedRef = useRef<any[]>([]);
   const lastActionTime = useRef(0);
+  const completedRef = useRef(false);
+  const mountTime = useRef(Date.now());
+
+  useEffect(() => {
+    mountTime.current = Date.now();
+  }, [mission.id]);
 
   const handleChoice = (food: any) => {
+    if (completedRef.current) return;
+    if (Date.now() - mountTime.current < 400) return;
     const now = Date.now();
     if (now - lastActionTime.current < 100) return;
     lastActionTime.current = now;
@@ -961,12 +1050,14 @@ const LunchTrayMission: React.FC<{
       setServed(newServed);
 
       if (newServed.length === targetMenu.length) {
+        completedRef.current = true;
         setTimeout(() => {
           onComplete();
         }, 150);
       }
     } else {
       playSound('wrong');
+      completedRef.current = true;
       onFail();
     }
   };
@@ -1069,8 +1160,16 @@ const AscendingNumbersMission: React.FC<{
   const [clickedSet, setClickedSet] = useState<Set<number>>(new Set());
   const clickedSetRef = useRef<Set<number>>(new Set());
   const lastActionTime = useRef(0);
+  const completedRef = useRef(false);
+  const mountTime = useRef(Date.now());
+
+  useEffect(() => {
+    mountTime.current = Date.now();
+  }, [mission.id]);
 
   const handleNumClick = (num: number) => {
+    if (completedRef.current) return;
+    if (Date.now() - mountTime.current < 400) return;
     if (clickedSetRef.current.has(num)) return; // already clicked
     if (clickedSetRef.current.size >= sorted.length) return; // already completed
 
@@ -1087,12 +1186,14 @@ const AscendingNumbersMission: React.FC<{
       setClickedSet(nextSet);
 
       if (nextSet.size === sorted.length) {
+        completedRef.current = true;
         setTimeout(() => {
           onComplete();
         }, 150);
       }
     } else {
       playSound('wrong');
+      completedRef.current = true;
       onFail();
     }
   };
