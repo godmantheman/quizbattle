@@ -137,12 +137,15 @@ export default function App() {
   }, [phase]);
 
   // Complete mission logic
-  const handleMissionComplete = (playerId: 1 | 2) => {
+  const handleMissionComplete = (playerId: 1 | 2, completedIndex: number) => {
     const now = Date.now();
     
     if (playerId === 1) {
       const duration = (now - p1MissionStart.current) / 1000;
       setP1(prev => {
+        if (completedIndex !== prev.currentMissionIndex) {
+          return prev;
+        }
         const nextIdx = prev.currentMissionIndex + 1;
         const nextDurations = [...prev.missionDurations, duration];
         const isGameFinished = nextIdx >= 10;
@@ -184,6 +187,9 @@ export default function App() {
 
       const duration = (now - p2MissionStart.current) / 1000;
       setP2(prev => {
+        if (completedIndex !== prev.currentMissionIndex) {
+          return prev;
+        }
         const nextIdx = prev.currentMissionIndex + 1;
         const nextDurations = [...prev.missionDurations, duration];
         const isGameFinished = nextIdx >= 10;
@@ -218,12 +224,14 @@ export default function App() {
   };
 
   // Fail/Wrong Penalty stun logic
-  const handleMissionFail = (playerId: 1 | 2) => {
+  const handleMissionFail = (playerId: 1 | 2, failedIndex: number) => {
     if (playerId === 1) {
+      if (failedIndex !== p1.currentMissionIndex) return;
       if (p1Stunned) return;
       setP1Stunned(true);
       setTimeout(() => setP1Stunned(false), 1000);
     } else {
+      if (failedIndex !== p2.currentMissionIndex) return;
       if (p2Stunned) return;
       setP2Stunned(true);
       setTimeout(() => setP2Stunned(false), 1000);
@@ -612,8 +620,8 @@ export default function App() {
                     {p1.currentMissionIndex < 10 ? (
                       <MissionRenderer
                         mission={p1.missions[p1.currentMissionIndex]}
-                        onComplete={() => handleMissionComplete(1)}
-                        onFail={() => handleMissionFail(1)}
+                        onComplete={() => handleMissionComplete(1, p1.currentMissionIndex)}
+                        onFail={() => handleMissionFail(1, p1.currentMissionIndex)}
                         color="blue"
                         isStunned={p1Stunned}
                       />
@@ -661,8 +669,8 @@ export default function App() {
                       {p2.currentMissionIndex < 10 ? (
                         <MissionRenderer
                           mission={p2.missions[p2.currentMissionIndex]}
-                          onComplete={() => handleMissionComplete(2)}
-                          onFail={() => handleMissionFail(2)}
+                          onComplete={() => handleMissionComplete(2, p2.currentMissionIndex)}
+                          onFail={() => handleMissionFail(2, p2.currentMissionIndex)}
                           color="orange"
                           isStunned={p2Stunned}
                         />

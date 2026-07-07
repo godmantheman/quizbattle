@@ -513,6 +513,7 @@ const TrashSortMission: React.FC<{
   color: string;
 }> = ({ mission, onComplete, onFail, color }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const currentIndexRef = useRef(0);
   const items = mission.data.items;
   const lastActionTime = useRef(0);
 
@@ -520,15 +521,21 @@ const TrashSortMission: React.FC<{
 
   const handleSort = (selectedType: string) => {
     const now = Date.now();
-    if (now - lastActionTime.current < 250) return;
+    if (now - lastActionTime.current < 100) return;
     lastActionTime.current = now;
 
-    if (selectedType === currentItem.type) {
+    const itemIndex = currentIndexRef.current;
+    if (itemIndex >= items.length) return;
+    const item = items[itemIndex];
+
+    if (selectedType === item.type) {
       playSound('correct');
-      if (currentIndex + 1 >= items.length) {
+      const nextIdx = itemIndex + 1;
+      currentIndexRef.current = nextIdx;
+      setCurrentIndex(nextIdx);
+
+      if (nextIdx >= items.length) {
         onComplete();
-      } else {
-        setCurrentIndex(prev => prev + 1);
       }
     } else {
       playSound('wrong');
@@ -612,6 +619,7 @@ const LockerCipherMission: React.FC<{
 }> = ({ mission, onComplete, onFail, color }) => {
   const { colors, pattern } = mission.data;
   const [userInput, setUserInput] = useState<number[]>([]);
+  const userInputRef = useRef<number[]>([]);
   const [isPlayingPattern, setIsPlayingPattern] = useState(true);
   const [activeButton, setActiveButton] = useState<number | null>(null);
   const lastActionTime = useRef(0);
@@ -622,6 +630,7 @@ const LockerCipherMission: React.FC<{
     const play = async () => {
       setIsPlayingPattern(true);
       setUserInput([]);
+      userInputRef.current = [];
       
       // Delay before starting pattern display
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -648,17 +657,21 @@ const LockerCipherMission: React.FC<{
     if (isPlayingPattern) return; // ignore clicks while playing pattern
 
     const now = Date.now();
-    if (now - lastActionTime.current < 250) return;
+    if (now - lastActionTime.current < 100) return;
     lastActionTime.current = now;
 
     playSound('tap');
-    const newInput = [...userInput, idx];
+    const newInput = [...userInputRef.current, idx];
+    userInputRef.current = newInput;
     setUserInput(newInput);
 
     // Verify current step
     const currentStepIdx = newInput.length - 1;
     if (newInput[currentStepIdx] !== pattern[currentStepIdx]) {
       playSound('wrong');
+      // Reset on failure
+      userInputRef.current = [];
+      setUserInput([]);
       onFail();
       return;
     }
@@ -928,19 +941,22 @@ const LunchTrayMission: React.FC<{
 }> = ({ mission, onComplete, onFail, color }) => {
   const { targetMenu, choices } = mission.data;
   const [served, setServed] = useState<any[]>([]);
+  const servedRef = useRef<any[]>([]);
   const lastActionTime = useRef(0);
 
   const handleChoice = (food: any) => {
     const now = Date.now();
-    if (now - lastActionTime.current < 250) return;
+    if (now - lastActionTime.current < 100) return;
     lastActionTime.current = now;
 
-    const nextIndex = served.length;
+    const nextIndex = servedRef.current.length;
+    if (nextIndex >= targetMenu.length) return;
     const expectedFood = targetMenu[nextIndex];
 
     if (food.type === expectedFood.type) {
       playSound('correct');
-      const newServed = [...served, food];
+      const newServed = [...servedRef.current, food];
+      servedRef.current = newServed;
       setServed(newServed);
 
       if (newServed.length === targetMenu.length) {
@@ -1050,21 +1066,22 @@ const AscendingNumbersMission: React.FC<{
 }> = ({ mission, onComplete, onFail, color }) => {
   const { shuffled, sorted } = mission.data;
   const [clickedSet, setClickedSet] = useState<Set<number>>(new Set());
+  const clickedSetRef = useRef<Set<number>>(new Set());
   const lastActionTime = useRef(0);
 
   const handleNumClick = (num: number) => {
-    if (clickedSet.has(num)) return; // already clicked
+    if (clickedSetRef.current.has(num)) return; // already clicked
 
     const now = Date.now();
-    if (now - lastActionTime.current < 250) return;
+    if (now - lastActionTime.current < 100) return;
     lastActionTime.current = now;
 
-    const currentTargetNum = sorted[clickedSet.size];
+    const currentTargetNum = sorted[clickedSetRef.current.size];
 
     if (num === currentTargetNum) {
       playSound('correct');
-      const nextSet = new Set(clickedSet);
-      nextSet.add(num);
+      clickedSetRef.current.add(num);
+      const nextSet = new Set(clickedSetRef.current);
       setClickedSet(nextSet);
 
       if (nextSet.size === sorted.length) {
