@@ -1,0 +1,6 @@
+{
+  "name": "After School Speed Race",
+  "description": "A split-screen 1v1 speedrun game designed for StanbyME 2, featuring 10 creative after-school missions like palm hold, fast math, ciphers, and memory puzzles.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
