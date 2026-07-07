@@ -187,6 +187,7 @@ const PalmScanMission: React.FC<{
           onMouseLeave={handleEnd}
           onTouchStart={handleStart}
           onTouchEnd={handleEnd}
+          onTouchCancel={handleEnd}
           className={`relative z-10 w-40 h-40 rounded-full flex flex-col items-center justify-center transition-all shadow-xl active:scale-95 ${
             isPressing 
               ? 'bg-red-500 text-white scale-105 shadow-red-500/30' 
@@ -273,6 +274,10 @@ const GugudanMission: React.FC<{
         {choices.map((choice: number, idx: number) => (
           <button
             key={idx}
+            onTouchStart={(e) => {
+              e.preventDefault();
+              handleChoice(choice);
+            }}
             onClick={() => handleChoice(choice)}
             className={`py-4 px-2 rounded-xl text-2xl font-black text-center shadow-md active:scale-95 transition-all ${choiceColor}`}
           >
@@ -318,14 +323,18 @@ const EraseChalkMission: React.FC<{
   };
 
   const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    // Determine which child block is currently under touch coordinates
-    const touch = e.touches[0];
-    const element = document.elementFromPoint(touch.clientX, touch.clientY);
-    if (element) {
-      const blockIdAttr = element.getAttribute('data-block-id');
-      if (blockIdAttr) {
-        const blockId = parseInt(blockIdAttr, 10);
-        handleErase(blockId);
+    // Prevent scrolling/zooming while drawing
+    e.preventDefault();
+    for (let i = 0; i < e.targetTouches.length; i++) {
+      const touch = e.targetTouches[i];
+      const element = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (element) {
+        const blockIdAttr = element.getAttribute('data-block-id');
+        // Ensure the element belongs to this player's blackboard to avoid cross-board triggers
+        if (blockIdAttr && e.currentTarget.contains(element)) {
+          const blockId = parseInt(blockIdAttr, 10);
+          handleErase(blockId);
+        }
       }
     }
   };
@@ -442,6 +451,10 @@ const BellChimeMission: React.FC<{
       {/* Interactive Bell Container */}
       <div className="relative flex items-center justify-center w-52 h-52">
         <button
+          onTouchStart={(e) => {
+            e.preventDefault();
+            handleTap();
+          }}
           onClick={handleTap}
           className="group relative z-10 w-36 h-36 rounded-full flex flex-col items-center justify-center bg-white border-4 border-yellow-400 active:scale-95 shadow-xl transition-transform"
         >
@@ -537,6 +550,10 @@ const TrashSortMission: React.FC<{
       {/* 3 Sorting Bins */}
       <div className="grid grid-cols-3 gap-2 w-11/12 max-w-xs">
         <button
+          onTouchStart={(e) => {
+            e.preventDefault();
+            handleSort('paper');
+          }}
           onClick={() => handleSort('paper')}
           className="flex flex-col items-center justify-center py-4 px-2 bg-blue-50 border-2 border-blue-200 hover:border-blue-400 active:bg-blue-100 rounded-xl shadow-sm text-center active:scale-95 transition-all"
         >
@@ -545,6 +562,10 @@ const TrashSortMission: React.FC<{
         </button>
 
         <button
+          onTouchStart={(e) => {
+            e.preventDefault();
+            handleSort('plastic');
+          }}
           onClick={() => handleSort('plastic')}
           className="flex flex-col items-center justify-center py-4 px-2 bg-emerald-50 border-2 border-emerald-200 hover:border-emerald-400 active:bg-emerald-100 rounded-xl shadow-sm text-center active:scale-95 transition-all"
         >
@@ -553,6 +574,10 @@ const TrashSortMission: React.FC<{
         </button>
 
         <button
+          onTouchStart={(e) => {
+            e.preventDefault();
+            handleSort('metal');
+          }}
           onClick={() => handleSort('metal')}
           className="flex flex-col items-center justify-center py-4 px-2 bg-amber-50 border-2 border-amber-200 hover:border-amber-400 active:bg-amber-100 rounded-xl shadow-sm text-center active:scale-95 transition-all"
         >
@@ -676,6 +701,12 @@ const LockerCipherMission: React.FC<{
             <button
               key={idx}
               disabled={isPlayingPattern}
+              onTouchStart={(e) => {
+                if (!isPlayingPattern) {
+                  e.preventDefault();
+                  handleLockerBtn(idx);
+                }
+              }}
               onClick={() => handleLockerBtn(idx)}
               className={`py-6 px-1 rounded-2xl font-black text-center text-sm shadow-md transition-all border-2 ${getLockerBtnClass(idx)} ${
                 isPlayingPattern ? 'cursor-not-allowed opacity-80' : 'active:scale-95 cursor-pointer'
@@ -773,6 +804,10 @@ const PencilSharpenMission: React.FC<{
       {/* Button to mash */}
       <div className="w-11/12 max-w-xs text-center flex flex-col gap-2">
         <button
+          onTouchStart={(e) => {
+            e.preventDefault();
+            handleSpin();
+          }}
           onClick={handleSpin}
           className={`w-full py-4 rounded-2xl text-xl font-bold text-white shadow-md active:scale-95 transition-all ${btnCol}`}
         >
@@ -828,6 +863,10 @@ const CatchFliesMission: React.FC<{
         {flies.map((fly) => (
           <motion.button
             key={fly.id}
+            onTouchStart={(e) => {
+              e.preventDefault();
+              handleFlyTap(fly.id);
+            }}
             onClick={() => handleFlyTap(fly.id)}
             style={{ 
               position: 'absolute',
@@ -957,6 +996,12 @@ const LunchTrayMission: React.FC<{
             <button
               key={idx}
               disabled={alreadyPlaced}
+              onTouchStart={(e) => {
+                if (!alreadyPlaced) {
+                  e.preventDefault();
+                  handleChoice(food);
+                }
+              }}
               onClick={() => handleChoice(food)}
               className={`flex flex-col items-center justify-center p-2 bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl shadow-sm text-center active:scale-95 transition-all ${
                 alreadyPlaced ? 'opacity-30 cursor-not-allowed scale-95' : 'cursor-pointer'
@@ -1026,6 +1071,12 @@ const AscendingNumbersMission: React.FC<{
           return (
             <button
               key={idx}
+              onTouchStart={(e) => {
+                if (!isClicked) {
+                  e.preventDefault();
+                  handleNumClick(num);
+                }
+              }}
               onClick={() => handleNumClick(num)}
               className={`w-14 h-20 rounded-xl font-mono text-xl font-black border-2 flex items-center justify-center shadow-md active:scale-90 transition-all ${
                 isClicked 
