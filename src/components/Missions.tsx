@@ -233,8 +233,13 @@ const GugudanMission: React.FC<{
   color: string;
 }> = ({ mission, onComplete, onFail, color }) => {
   const { num1, num2, choices, correctAnswer } = mission.data;
+  const lastActionTime = useRef(0);
 
   const handleChoice = (val: number) => {
+    const now = Date.now();
+    if (now - lastActionTime.current < 250) return;
+    lastActionTime.current = now;
+
     if (val === correctAnswer) {
       playSound('correct');
       onComplete();
@@ -509,10 +514,15 @@ const TrashSortMission: React.FC<{
 }> = ({ mission, onComplete, onFail, color }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const items = mission.data.items;
+  const lastActionTime = useRef(0);
 
   const currentItem = items[currentIndex];
 
   const handleSort = (selectedType: string) => {
+    const now = Date.now();
+    if (now - lastActionTime.current < 250) return;
+    lastActionTime.current = now;
+
     if (selectedType === currentItem.type) {
       playSound('correct');
       if (currentIndex + 1 >= items.length) {
@@ -604,6 +614,7 @@ const LockerCipherMission: React.FC<{
   const [userInput, setUserInput] = useState<number[]>([]);
   const [isPlayingPattern, setIsPlayingPattern] = useState(true);
   const [activeButton, setActiveButton] = useState<number | null>(null);
+  const lastActionTime = useRef(0);
 
   // Play pattern on start or retry
   useEffect(() => {
@@ -635,6 +646,10 @@ const LockerCipherMission: React.FC<{
 
   const handleLockerBtn = (idx: number) => {
     if (isPlayingPattern) return; // ignore clicks while playing pattern
+
+    const now = Date.now();
+    if (now - lastActionTime.current < 250) return;
+    lastActionTime.current = now;
 
     playSound('tap');
     const newInput = [...userInput, idx];
@@ -913,8 +928,13 @@ const LunchTrayMission: React.FC<{
 }> = ({ mission, onComplete, onFail, color }) => {
   const { targetMenu, choices } = mission.data;
   const [served, setServed] = useState<any[]>([]);
+  const lastActionTime = useRef(0);
 
   const handleChoice = (food: any) => {
+    const now = Date.now();
+    if (now - lastActionTime.current < 250) return;
+    lastActionTime.current = now;
+
     const nextIndex = served.length;
     const expectedFood = targetMenu[nextIndex];
 
@@ -1030,9 +1050,14 @@ const AscendingNumbersMission: React.FC<{
 }> = ({ mission, onComplete, onFail, color }) => {
   const { shuffled, sorted } = mission.data;
   const [clickedSet, setClickedSet] = useState<Set<number>>(new Set());
+  const lastActionTime = useRef(0);
 
   const handleNumClick = (num: number) => {
     if (clickedSet.has(num)) return; // already clicked
+
+    const now = Date.now();
+    if (now - lastActionTime.current < 250) return;
+    lastActionTime.current = now;
 
     const currentTargetNum = sorted[clickedSet.size];
 
