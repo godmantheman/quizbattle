@@ -74,6 +74,10 @@ export const MissionRenderer: React.FC<MissionProps> = ({
       return <LunchTrayMission mission={mission} onComplete={onComplete} onFail={onFail} color={color} />;
     case 'ascending_numbers':
       return <AscendingNumbersMission mission={mission} onComplete={onComplete} onFail={onFail} color={color} />;
+    case 'card_matching':
+      return <CardMatchingMission mission={mission} onComplete={onComplete} onFail={onFail} color={color} />;
+    case 'pop_balloons':
+      return <PopBalloonsMission mission={mission} onComplete={onComplete} color={color} />;
     default:
       return (
         <div className="flex flex-col items-center justify-center h-full text-center">
@@ -1254,6 +1258,215 @@ const AscendingNumbersMission: React.FC<{
           ))}
         </div>
       </div>
+    </div>
+  );
+};
+
+/* ==========================================================================
+   11. Card Matching Mission (학교 카드 짝맞추기)
+   ========================================================================== */
+export const CardMatchingMission: React.FC<{
+  mission: MissionState;
+  onComplete: () => void;
+  onFail: () => void;
+  color: string;
+}> = ({ mission, onComplete, onFail, color }) => {
+  const [cards, setCards] = useState<any[]>([]);
+  const [selected, setSelected] = useState<number[]>([]);
+  const completedRef = useRef(false);
+  const mountTime = useRef(Date.now());
+
+  useEffect(() => {
+    setCards(mission.data.cards.map((c: any) => ({ ...c })));
+    setSelected([]);
+    mountTime.current = Date.now();
+  }, [mission.id]);
+
+  const handleCardClick = (idx: number) => {
+    if (completedRef.current) return;
+    if (Date.now() - mountTime.current < 400) return;
+    if (cards[idx].isFlipped || cards[idx].isMatched || selected.includes(idx)) return;
+    if (selected.length >= 2) return;
+
+    playSound('tap');
+    
+    const updatedCards = [...cards];
+    updatedCards[idx].isFlipped = true;
+    setCards(updatedCards);
+
+    const nextSelected = [...selected, idx];
+    setSelected(nextSelected);
+
+    if (nextSelected.length === 2) {
+      const [firstIdx, secondIdx] = nextSelected;
+      if (cards[firstIdx].value === cards[secondIdx].value) {
+        setTimeout(() => {
+          playSound('correct');
+          const matchedCards = updatedCards.map((c, i) => {
+            if (i === firstIdx || i === secondIdx) {
+              return { ...c, isMatched: true };
+            }
+            return c;
+          });
+          setCards(matchedCards);
+          setSelected([]);
+
+          if (matchedCards.every(c => c.isMatched)) {
+            completedRef.current = true;
+            setTimeout(onComplete, 200);
+          }
+        }, 300);
+      } else {
+        setTimeout(() => {
+          playSound('wrong');
+          const flippedBack = updatedCards.map((c, i) => {
+            if (i === firstIdx || i === secondIdx) {
+              return { ...c, isFlipped: false };
+            }
+            return c;
+          });
+          setCards(flippedBack);
+          setSelected([]);
+        }, 700);
+      }
+    }
+  };
+
+  const activeColor = color === 'blue' ? 'bg-sky-500' : 'bg-amber-500';
+  const colsClass = 
+    cards.length <= 4 ? 'grid-cols-2' : 
+    cards.length === 8 ? 'grid-cols-4' : 'grid-cols-3';
+
+  return (
+    <div className="flex flex-col items-center justify-between h-full py-4 select-none">
+      <div className="text-center">
+        <h4 className="text-lg font-bold text-gray-800">{mission.koreanName}</h4>
+        <p className="text-xs text-gray-500 mt-1">{mission.description}</p>
+      </div>
+
+      <div className={`grid ${colsClass} gap-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl shadow-inner max-w-xs w-11/12 justify-center`}>
+        {cards.map((card, idx) => {
+          const showValue = card.isFlipped || card.isMatched;
+          return (
+            <button
+              key={card.id}
+              onTouchStart={(e) => {
+                e.preventDefault();
+                handleCardClick(idx);
+              }}
+              onClick={() => handleCardClick(idx)}
+              className={`w-full aspect-square rounded-xl text-3xl font-bold flex items-center justify-center transition-all duration-300 shadow-md ${
+                showValue
+                  ? 'bg-white border border-slate-300 scale-95'
+                  : `${activeColor} text-white hover:brightness-105 active:scale-95`
+              }`}
+            >
+              {showValue ? card.value : '❓'}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="text-xs text-slate-400 font-bold">뒤집어서 똑같은 학교 물건 그림을 맞추세요!</div>
+    </div>
+  );
+};
+
+/* ==========================================================================
+   12. Pop Balloons Mission (축제 풍선 터뜨리기)
+   ========================================================================== */
+export const PopBalloonsMission: React.FC<{
+  mission: MissionState;
+  onComplete: () => void;
+  color: string;
+}> = ({ mission, onComplete, color }) => {
+  const [balloons, setBalloons] = useState<any[]>([]);
+  const completedRef = useRef(false);
+  const mountTime = useRef(Date.now());
+  const requestRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setBalloons(mission.data.balloons.map((b: any) => ({ ...b })));
+    mountTime.current = Date.now();
+  }, [mission.id]);
+
+  useEffect(() => {
+    const updatePositions = () => {
+      setBalloons(prev => {
+        if (completedRef.current) return prev;
+        return prev.map(b => {
+          let nextY = b.y - b.speed;
+          if (nextY < -15) {
+            nextY = 115; // Wrap back to bottom
+          }
+          return { ...b, y: nextY };
+        });
+      });
+      requestRef.current = requestAnimationFrame(updatePositions);
+    };
+
+    requestRef.current = requestAnimationFrame(updatePositions);
+    return () => {
+      if (requestRef.current) cancelAnimationFrame(requestRef.current);
+    };
+  }, []);
+
+  const handlePop = (id: number) => {
+    if (completedRef.current) return;
+    if (Date.now() - mountTime.current < 400) return;
+    playSound('correct');
+
+    setBalloons(prev => {
+      const filtered = prev.filter(b => b.id !== id);
+      if (filtered.length === 0 && !completedRef.current) {
+        completedRef.current = true;
+        setTimeout(onComplete, 200);
+      }
+      return filtered;
+    });
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-between h-full py-4 select-none">
+      <div className="text-center">
+        <h4 className="text-lg font-bold text-gray-800">{mission.koreanName}</h4>
+        <p className="text-xs text-gray-500 mt-1">{mission.description}</p>
+      </div>
+
+      <div className="relative w-11/12 max-w-xs h-60 bg-slate-50 border border-slate-100 rounded-2xl shadow-inner overflow-hidden">
+        {balloons.map(b => (
+          <button
+            key={b.id}
+            onTouchStart={(e) => {
+              e.preventDefault();
+              handlePop(b.id);
+            }}
+            onClick={() => handlePop(b.id)}
+            style={{
+              position: 'absolute',
+              left: `${b.x}%`,
+              top: `${b.y}%`,
+              width: `${b.size}px`,
+              height: `${b.size * 1.2}px`,
+              transform: 'translate(-50%, -50%)',
+            }}
+            className={`${b.color} rounded-t-full rounded-b-[40%] flex items-center justify-center text-white font-bold shadow-lg cursor-pointer active:scale-90`}
+          >
+            <div className="flex flex-col items-center justify-center relative w-full h-full">
+              <span className="text-sm">🎈</span>
+              <div className="w-1.5 h-3 bg-white/25 rounded-full absolute top-1.5 left-2 rotate-12" />
+            </div>
+            <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-0.5 h-2 bg-stone-400" />
+          </button>
+        ))}
+        {balloons.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center text-green-500 font-extrabold text-lg">
+            🎉 대성공!
+          </div>
+        )}
+      </div>
+
+      <div className="text-xs text-slate-400 font-bold">남은 풍선: <span className="text-sky-500 font-extrabold">{balloons.length}</span>개</div>
     </div>
   );
 };
