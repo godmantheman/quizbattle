@@ -107,6 +107,9 @@ const PalmScanMission: React.FC<{
 
   useEffect(() => {
     mountTime.current = Date.now();
+    completedRef.current = false;
+    setProgress(0);
+    setIsPressing(false);
   }, [mission.id]);
 
   useEffect(() => {
@@ -253,6 +256,7 @@ const GugudanMission: React.FC<{
 
   useEffect(() => {
     mountTime.current = Date.now();
+    completedRef.current = false;
   }, [mission.id]);
 
   const handleChoice = (val: number) => {
@@ -303,12 +307,9 @@ const GugudanMission: React.FC<{
         {choices.map((choice: number, idx: number) => (
           <button
             key={idx}
-            onTouchStart={(e) => {
-              e.preventDefault();
-              handleChoice(choice);
-            }}
             onClick={() => handleChoice(choice)}
-            className={`py-4 px-2 rounded-xl text-2xl font-black text-center shadow-md active:scale-95 transition-all ${choiceColor}`}
+            className={`py-4 px-2 rounded-xl text-2xl font-black text-center shadow-md active:scale-95 transition-all select-none cursor-pointer ${choiceColor}`}
+            style={{ touchAction: 'manipulation' }}
           >
             {choice}
           </button>
@@ -336,6 +337,8 @@ const EraseChalkMission: React.FC<{
 
   useEffect(() => {
     mountTime.current = Date.now();
+    setErased({});
+    completedRef.current = false;
   }, [mission.id]);
 
   // Mark block as erased when mouse/finger enters
@@ -464,6 +467,9 @@ const BellChimeMission: React.FC<{
 
   useEffect(() => {
     mountTime.current = Date.now();
+    setTaps(0);
+    setIsSwinging(false);
+    completedRef.current = false;
   }, [mission.id]);
 
   const handleTap = () => {
@@ -500,12 +506,9 @@ const BellChimeMission: React.FC<{
       {/* Interactive Bell Container */}
       <div className="relative flex items-center justify-center w-52 h-52">
         <button
-          onTouchStart={(e) => {
-            e.preventDefault();
-            handleTap();
-          }}
           onClick={handleTap}
-          className="group relative z-10 w-36 h-36 rounded-full flex flex-col items-center justify-center bg-white border-4 border-yellow-400 active:scale-95 shadow-xl transition-transform"
+          className="group relative z-10 w-36 h-36 rounded-full flex flex-col items-center justify-center bg-white border-4 border-yellow-400 active:scale-95 shadow-xl transition-transform select-none cursor-pointer"
+          style={{ touchAction: 'manipulation' }}
         >
           {/* Bell visual container */}
           <motion.div
@@ -565,9 +568,12 @@ const TrashSortMission: React.FC<{
 
   useEffect(() => {
     mountTime.current = Date.now();
+    setCurrentIndex(0);
+    currentIndexRef.current = 0;
+    completedRef.current = false;
   }, [mission.id]);
 
-  const currentItem = items[currentIndex];
+  const currentItem = items[currentIndex] || items[0] || { name: '', type: '' };
 
   const handleSort = (selectedType: string) => {
     if (completedRef.current) return;
@@ -615,42 +621,33 @@ const TrashSortMission: React.FC<{
         >
           {currentItem.name}
         </motion.div>
-        <span className="text-xs text-zinc-500 font-medium">({currentIndex + 1}/3 완료)</span>
+        <span className="text-xs text-zinc-500 font-medium">({Math.min(currentIndex + 1, items.length)}/{items.length} 완료)</span>
       </div>
 
       {/* 3 Sorting Bins */}
       <div className="grid grid-cols-3 gap-2 w-11/12 max-w-xs">
         <button
-          onTouchStart={(e) => {
-            e.preventDefault();
-            handleSort('paper');
-          }}
           onClick={() => handleSort('paper')}
-          className="flex flex-col items-center justify-center py-4 px-2 bg-blue-50 border-2 border-blue-200 hover:border-blue-400 active:bg-blue-100 rounded-xl shadow-sm text-center active:scale-95 transition-all"
+          className="flex flex-col items-center justify-center py-4 px-2 bg-blue-50 border-2 border-blue-200 hover:border-blue-400 active:bg-blue-100 rounded-xl shadow-sm text-center active:scale-95 transition-all select-none cursor-pointer"
+          style={{ touchAction: 'none' }}
         >
           <span className="text-3xl mb-1">📄</span>
           <span className="text-xs font-bold text-blue-700">종이류</span>
         </button>
 
         <button
-          onTouchStart={(e) => {
-            e.preventDefault();
-            handleSort('plastic');
-          }}
           onClick={() => handleSort('plastic')}
-          className="flex flex-col items-center justify-center py-4 px-2 bg-emerald-50 border-2 border-emerald-200 hover:border-emerald-400 active:bg-emerald-100 rounded-xl shadow-sm text-center active:scale-95 transition-all"
+          className="flex flex-col items-center justify-center py-4 px-2 bg-emerald-50 border-2 border-emerald-200 hover:border-emerald-400 active:bg-emerald-100 rounded-xl shadow-sm text-center active:scale-95 transition-all select-none cursor-pointer"
+          style={{ touchAction: 'none' }}
         >
           <span className="text-3xl mb-1">🧴</span>
           <span className="text-xs font-bold text-emerald-700">플라스틱</span>
         </button>
 
         <button
-          onTouchStart={(e) => {
-            e.preventDefault();
-            handleSort('metal');
-          }}
           onClick={() => handleSort('metal')}
-          className="flex flex-col items-center justify-center py-4 px-2 bg-amber-50 border-2 border-amber-200 hover:border-amber-400 active:bg-amber-100 rounded-xl shadow-sm text-center active:scale-95 transition-all"
+          className="flex flex-col items-center justify-center py-4 px-2 bg-amber-50 border-2 border-amber-200 hover:border-amber-400 active:bg-amber-100 rounded-xl shadow-sm text-center active:scale-95 transition-all select-none cursor-pointer"
+          style={{ touchAction: 'none' }}
         >
           <span className="text-3xl mb-1">🥫</span>
           <span className="text-xs font-bold text-amber-700">캔/고철</span>
@@ -795,16 +792,11 @@ const LockerCipherMission: React.FC<{
             <button
               key={idx}
               disabled={isPlayingPattern}
-              onTouchStart={(e) => {
-                if (!isPlayingPattern) {
-                  e.preventDefault();
-                  handleLockerBtn(idx);
-                }
-              }}
               onClick={() => handleLockerBtn(idx)}
-              className={`py-6 px-1 rounded-2xl font-black text-center text-sm shadow-md transition-all border-2 ${getLockerBtnClass(idx)} ${
+              className={`py-6 px-1 rounded-2xl font-black text-center text-sm shadow-md transition-all border-2 select-none ${getLockerBtnClass(idx)} ${
                 isPlayingPattern ? 'cursor-not-allowed opacity-80' : 'active:scale-95 cursor-pointer'
               }`}
+              style={{ touchAction: 'manipulation' }}
             >
               {name}
             </button>
@@ -835,6 +827,8 @@ const PencilSharpenMission: React.FC<{
 
   useEffect(() => {
     mountTime.current = Date.now();
+    setSpins(0);
+    completedRef.current = false;
   }, [mission.id]);
 
   const handleSpin = () => {
@@ -908,12 +902,9 @@ const PencilSharpenMission: React.FC<{
       {/* Button to mash */}
       <div className="w-11/12 max-w-xs text-center flex flex-col gap-2">
         <button
-          onTouchStart={(e) => {
-            e.preventDefault();
-            handleSpin();
-          }}
           onClick={handleSpin}
-          className={`w-full py-4 rounded-2xl text-xl font-bold text-white shadow-md active:scale-95 transition-all ${btnCol}`}
+          className={`w-full py-4 rounded-2xl text-xl font-bold text-white shadow-md active:scale-95 transition-all select-none cursor-pointer ${btnCol}`}
+          style={{ touchAction: 'manipulation' }}
         >
           ✏️ 깎기 연타! ({spins}/{requiredSpins})
         </button>
@@ -936,13 +927,16 @@ const CatchFliesMission: React.FC<{
   onComplete: () => void;
   color: string;
 }> = ({ mission, onComplete, color }) => {
-  const initialFlies = mission.data.flies;
+  const initialFlies = mission.data.flies || [];
   const [flies, setFlies] = useState<any[]>(initialFlies);
   const [deadCount, setDeadCount] = useState(0);
   const completedRef = useRef(false);
   const mountTime = useRef(Date.now());
 
   useEffect(() => {
+    setFlies((mission.data.flies || []).map((f: any) => ({ ...f })));
+    setDeadCount(0);
+    completedRef.current = false;
     mountTime.current = Date.now();
   }, [mission.id]);
 
@@ -977,10 +971,6 @@ const CatchFliesMission: React.FC<{
         {flies.map((fly) => (
           <motion.button
             key={fly.id}
-            onTouchStart={(e) => {
-              e.preventDefault();
-              handleFlyTap(fly.id);
-            }}
             onClick={() => handleFlyTap(fly.id)}
             style={{ 
               position: 'absolute',
@@ -996,7 +986,7 @@ const CatchFliesMission: React.FC<{
               repeat: Infinity,
               ease: 'linear'
             }}
-            className="text-3xl active:scale-75 transition-all p-2 focus:outline-none"
+            className="text-3xl active:scale-75 transition-all p-2 focus:outline-none select-none cursor-pointer"
           >
             🪰
           </motion.button>
@@ -1034,6 +1024,9 @@ const LunchTrayMission: React.FC<{
 
   useEffect(() => {
     mountTime.current = Date.now();
+    setServed([]);
+    servedRef.current = [];
+    completedRef.current = false;
   }, [mission.id]);
 
   const handleChoice = (food: any) => {
@@ -1128,16 +1121,11 @@ const LunchTrayMission: React.FC<{
             <button
               key={idx}
               disabled={alreadyPlaced}
-              onTouchStart={(e) => {
-                if (!alreadyPlaced) {
-                  e.preventDefault();
-                  handleChoice(food);
-                }
-              }}
               onClick={() => handleChoice(food)}
-              className={`flex flex-col items-center justify-center p-2 bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl shadow-sm text-center active:scale-95 transition-all ${
+              className={`flex flex-col items-center justify-center p-2 bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl shadow-sm text-center active:scale-95 transition-all select-none ${
                 alreadyPlaced ? 'opacity-30 cursor-not-allowed scale-95' : 'cursor-pointer'
               }`}
+              style={{ touchAction: 'manipulation' }}
             >
               <span className="text-3xl">{food.name.split(' ')[0]}</span>
               <span className="text-[10px] font-bold text-gray-600 mt-1">{food.name.split(' ')[1]}</span>
@@ -1169,6 +1157,9 @@ const AscendingNumbersMission: React.FC<{
 
   useEffect(() => {
     mountTime.current = Date.now();
+    setClickedSet(new Set());
+    clickedSetRef.current = new Set();
+    completedRef.current = false;
   }, [mission.id]);
 
   const handleNumClick = (num: number) => {
@@ -1220,18 +1211,13 @@ const AscendingNumbersMission: React.FC<{
           return (
             <button
               key={idx}
-              onTouchStart={(e) => {
-                if (!isClicked) {
-                  e.preventDefault();
-                  handleNumClick(num);
-                }
-              }}
               onClick={() => handleNumClick(num)}
-              className={`w-14 h-20 rounded-xl font-mono text-xl font-black border-2 flex items-center justify-center shadow-md active:scale-90 transition-all ${
+              className={`w-14 h-20 rounded-xl font-mono text-xl font-black border-2 flex items-center justify-center shadow-md active:scale-90 transition-all select-none ${
                 isClicked 
                   ? 'bg-stone-300 border-stone-400 text-stone-500 cursor-not-allowed scale-95 opacity-50' 
-                  : 'bg-white border-slate-300 text-slate-800 hover:border-slate-500'
+                  : 'bg-white border-slate-300 text-slate-800 hover:border-slate-500 cursor-pointer'
               }`}
+              style={{ touchAction: 'manipulation' }}
             >
               {num}
             </button>
@@ -1277,8 +1263,9 @@ export const CardMatchingMission: React.FC<{
   const mountTime = useRef(Date.now());
 
   useEffect(() => {
-    setCards(mission.data.cards.map((c: any) => ({ ...c })));
+    setCards((mission.data.cards || []).map((c: any) => ({ ...c })));
     setSelected([]);
+    completedRef.current = false;
     mountTime.current = Date.now();
   }, [mission.id]);
 
@@ -1350,16 +1337,13 @@ export const CardMatchingMission: React.FC<{
           return (
             <button
               key={card.id}
-              onTouchStart={(e) => {
-                e.preventDefault();
-                handleCardClick(idx);
-              }}
               onClick={() => handleCardClick(idx)}
-              className={`w-full aspect-square rounded-xl text-3xl font-bold flex items-center justify-center transition-all duration-300 shadow-md ${
+              className={`w-full aspect-square rounded-xl text-3xl font-bold flex items-center justify-center transition-all duration-300 shadow-md select-none ${
                 showValue
                   ? 'bg-white border border-slate-300 scale-95'
-                  : `${activeColor} text-white hover:brightness-105 active:scale-95`
+                  : `${activeColor} text-white hover:brightness-105 active:scale-95 cursor-pointer`
               }`}
+              style={{ touchAction: 'manipulation' }}
             >
               {showValue ? card.value : '❓'}
             </button>
@@ -1386,7 +1370,8 @@ export const PopBalloonsMission: React.FC<{
   const requestRef = useRef<number | null>(null);
 
   useEffect(() => {
-    setBalloons(mission.data.balloons.map((b: any) => ({ ...b })));
+    setBalloons((mission.data.balloons || []).map((b: any) => ({ ...b })));
+    completedRef.current = false;
     mountTime.current = Date.now();
   }, [mission.id]);
 
@@ -1437,10 +1422,6 @@ export const PopBalloonsMission: React.FC<{
         {balloons.map(b => (
           <button
             key={b.id}
-            onTouchStart={(e) => {
-              e.preventDefault();
-              handlePop(b.id);
-            }}
             onClick={() => handlePop(b.id)}
             style={{
               position: 'absolute',
@@ -1449,6 +1430,7 @@ export const PopBalloonsMission: React.FC<{
               width: `${b.size}px`,
               height: `${b.size * 1.2}px`,
               transform: 'translate(-50%, -50%)',
+              touchAction: 'none'
             }}
             className={`${b.color} rounded-t-full rounded-b-[40%] flex items-center justify-center text-white font-bold shadow-lg cursor-pointer active:scale-90`}
           >

@@ -1,0 +1,44 @@
+{
+  "entities": {
+    "OnlinePlayer": {
+      "title": "OnlinePlayer",
+      "description": "Represents a player in an online room.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique ID of the player." },
+        "name": { "type": "string", "description": "The nickname of the player." },
+        "emoji": { "type": "string", "description": "The avatar emoji." },
+        "score": { "type": "number", "description": "The current score of the player." },
+        "currentMissionIndex": { "type": "number", "description": "The index of the player's current mission." },
+        "progressPercent": { "type": "number", "description": "The overall progress percentage of the player." },
+        "completedAt": { "type": "number", "description": "Timestamp when the player completed the race, if finished." },
+        "totalTime": { "type": "number", "description": "Total elapsed time in seconds to complete the race." },
+        "isHost": { "type": "boolean", "description": "Whether the player is the host of the room." }
+      },
+      "required": ["id", "name", "emoji", "score", "currentMissionIndex", "progressPercent", "isHost"]
+    },
+    "OnlineRoom": {
+      "title": "OnlineRoom",
+      "description": "Represents a multiplayer game room/lobby.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique 4-digit room code." },
+        "hostId": { "type": "string", "description": "The ID of the player hosting the room." },
+        "difficulty": { "type": "string", "enum": ["easy", "normal", "hard", "nightmare"], "description": "The difficulty level of the room." },
+        "phase": { "type": "string", "enum": ["lobby", "countdown", "playing", "gameover"], "description": "The current game phase." },
+        "createdAt": { "type": "number", "description": "The timestamp when the room was created." },
+        "countdownStartTime": { "type": "number", "description": "The timestamp when the countdown phase started." },
+        "gameStartTime": { "type": "number", "description": "The timestamp when the play phase started." },
+        "missionNames": { "type": "array", "description": "The array of 20 randomly selected mission names." },
+        "players": { "type": "object", "description": "Map of player IDs to player states." }
+      },
+      "required": ["id", "hostId", "difficulty", "phase", "createdAt", "missionNames", "players"]
+    }
+  },
+  "firestore": {
+    "rooms/{roomId}": {
+      "schema": "OnlineRoom",
+      "description": "Multiplayer game sessions matched by a 4-digit room code."
+    }
+  }
+}
