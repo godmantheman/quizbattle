@@ -122,12 +122,25 @@ export function generateMissionsForPlayer(
     orderedList = [...list].sort(() => Math.random() - 0.5);
   }
 
-  // Map to add idle status and continuous ID
-  return orderedList.map((item, index) => ({
-    ...item,
-    id: index + 1,
-    status: 'idle'
-  }));
+  // Map to add idle status, continuous ID, and regenerate unique data for duplicates
+  return orderedList.map((item, index) => {
+    let freshData = { ...item.data };
+    if (item.name === 'gugudan') freshData = generateGugudanData(difficulty);
+    else if (item.name === 'trash_sort') freshData = generateTrashSortData(difficulty);
+    else if (item.name === 'locker_cipher') freshData = generateLockerCipherData(difficulty);
+    else if (item.name === 'catch_flies') freshData = generateFliesData(difficulty);
+    else if (item.name === 'lunch_tray') freshData = generateLunchTrayData(difficulty);
+    else if (item.name === 'ascending_numbers') freshData = generateAscendingNumbersData(difficulty);
+    else if (item.name === 'card_matching') freshData = generateCardMatchingData(difficulty);
+    else if (item.name === 'pop_balloons') freshData = generatePopBalloonsData(difficulty);
+
+    return {
+      ...item,
+      id: index + 1,
+      status: 'idle',
+      data: freshData
+    };
+  });
 }
 
 function generateGugudanData(difficulty: string) {

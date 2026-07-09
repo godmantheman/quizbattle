@@ -3,13 +3,27 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Trophy, Play, RotateCcw, Monitor, RefreshCw, 
   Volume2, VolumeX, Sparkles, User, Info, Timer, Clock, 
-  CheckCircle, Zap, ShieldAlert, Award, Star, Cpu, Bot
+  CheckCircle, Zap, ShieldAlert, Award, Star, Cpu, Bot, Globe
 } from 'lucide-react';
 import { playSound } from './utils/sound';
 import { generateMissionsForPlayer } from './utils/missionGenerator';
 import { MissionRenderer } from './components/Missions';
 import { AILiveSimulator } from './components/AILiveSimulator';
 import { PlayerState, GamePhase, ScreenOrientation, Difficulty, AIDifficulty, GameMode } from './types';
+import { 
+  subscribeToRoom, 
+  updatePlayerProgress, 
+  updateRoomDifficulty, 
+  startOnlineGame, 
+  leaveRoom, 
+  returnToRoomLobby, 
+  setRoomPlaying,
+  OnlineRoom, 
+  OnlinePlayer 
+} from './lib/onlineService';
+import { OnlineLobbyView } from './components/OnlineLobbyView';
+import { OnlineTrack } from './components/OnlineTrack';
+import { OnlinePodium } from './components/OnlinePodium';
 
 const AVATARS = [
   { emoji: '🐯', name: '호랑이' },
@@ -58,6 +72,17 @@ export default function App() {
   const [countdown, setCountdown] = useState(3);
   const [gameMode, setGameMode] = useState<GameMode>('1v1');
   const [showForfeitConfirm, setShowForfeitConfirm] = useState(false);
+
+  // Online multiplayer states
+  const [onlineRoom, setOnlineRoom] = useState<OnlineRoom | null>(null);
+  const [onlinePlayerId] = useState<string>(() => {
+    let id = localStorage.getItem('speed_race_player_id');
+    if (!id) {
+      id = 'p_' + Math.random().toString(36).substring(2, 11);
+      localStorage.setItem('speed_race_player_id', id);
+    }
+    return id;
+  });
 
   // Difficulty & Custom counts
   const [difficulty, setDifficulty] = useState<Difficulty>('normal');
@@ -146,6 +171,49 @@ export default function App() {
     if (soundEnabled) playSound('countdown');
   };
 
+  // Online room subscription
+  useEffect(() => {
+    if (gameMode !== 'online' || !onlineRoom?.id) return;
+
+    const unsubscribe = subscribeToRoom(onlineRoom.id, (updatedRoom) => {
+      if (!updatedRoom) {
+        setOnlineRoom(null);
+        setPhase('lobby');
+        return;
+      }
+
+      setOnlineRoom(updatedRoom);
+
+      // 1. Sync Phase from Firestore to local client
+      if (updatedRoom.phase === 'countdown' && phase === 'lobby') {
+        const generated = generateMissionsForPlayer(updatedRoom.missionNames, updatedRoom.difficulty);
+        setP1(prev => ({
+          ...prev,
+          score: 0,
+          currentMissionIndex: 0,
+          missions: generated,
+          completedAt: null,
+          totalTime: 0,
+          missionDurations: []
+        }));
+
+        setCountdown(3);
+        setPhase('countdown');
+        if (soundEnabled) playSound('countdown');
+      }
+
+      if (updatedRoom.phase === 'lobby' && (phase === 'playing' || phase === 'gameover' || phase === 'countdown')) {
+        setPhase('lobby');
+      }
+
+      if (updatedRoom.phase === 'gameover' && phase === 'playing') {
+        setPhase('gameover');
+      }
+    });
+
+    return () => unsubscribe();
+  }, [gameMode, onlineRoom?.id, phase, soundEnabled]);
+
   // Countdown timer loop
   useEffect(() => {
     if (phase === 'countdown') {
@@ -158,6 +226,12 @@ export default function App() {
             p1MissionStart.current = Date.now();
             p2MissionStart.current = Date.now();
             if (soundEnabled) playSound('start');
+
+            // If online mode host, transition the room in Firestore to 'playing'
+            if (gameMode === 'online' && onlineRoom?.id && onlineRoom.hostId === onlinePlayerId) {
+              setRoomPlaying(onlineRoom.id, Date.now());
+            }
+
             return 0;
           } else {
             if (soundEnabled) playSound('countdown');
@@ -167,7 +241,7 @@ export default function App() {
       }, 1000);
       return () => clearInterval(interval);
     }
-  }, [phase, soundEnabled]);
+  }, [phase, soundEnabled, gameMode, onlineRoom?.id, onlineRoom?.hostId, onlinePlayerId]);
 
   // Game playing loop to track total running time
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -271,6 +345,46 @@ export default function App() {
     
     if (playerId === 1) {
       const duration = (now - p1MissionStart.current) / 1000;
+
+      // Online mode logic branch
+      if (gameMode === 'online' && onlineRoom?.id) {
+        if (completedIndex !== p1.currentMissionIndex) return;
+        const nextIdx = p1.currentMissionIndex + 1;
+        const isGameFinished = nextIdx >= p1.missions.length;
+        const percent = Math.min((nextIdx / p1.missions.length) * 100, 100);
+        const totalTimeVal = isGameFinished ? (now - startTime.current) / 1000 : null;
+        const completedTimestamp = isGameFinished ? now : null;
+
+        updatePlayerProgress(
+          onlineRoom.id,
+          onlinePlayerId,
+          nextIdx,
+          nextIdx,
+          percent,
+          completedTimestamp,
+          totalTimeVal
+        );
+
+        setP1(prev => ({
+          ...prev,
+          score: nextIdx,
+          currentMissionIndex: nextIdx,
+          completedAt: completedTimestamp,
+          totalTime: totalTimeVal || 0,
+          missionDurations: [...prev.missionDurations, duration]
+        }));
+
+        p1MissionStart.current = now;
+
+        if (isGameFinished) {
+          if (soundEnabled) playSound('victory');
+          // Update room phase to gameover if all players in the room are done!
+          // Host or whoever finishes can check, but simpler is to let local player transition.
+          setTimeout(() => setPhase('gameover'), 800);
+        }
+        return;
+      }
+
       setP1(prev => {
         if (completedIndex !== prev.currentMissionIndex) {
           return prev;
@@ -404,6 +518,27 @@ export default function App() {
   const p1ProgressPercent = p1.missions.length ? Math.min((p1.currentMissionIndex / p1.missions.length) * 100, 100) : 0;
   const p2ProgressPercent = p2.missions.length ? Math.min((p2.currentMissionIndex / p2.missions.length) * 100, 100) : 0;
 
+  const handleOnlineLeaveRoom = async () => {
+    if (!onlineRoom?.id) return;
+    try {
+      await leaveRoom(onlineRoom.id, onlinePlayerId);
+      setOnlineRoom(null);
+      setGameMode('1v1');
+      setPhase('lobby');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleOnlineReturnLobby = async () => {
+    if (!onlineRoom?.id) return;
+    try {
+      await returnToRoomLobby(onlineRoom.id);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans flex flex-col justify-between overflow-hidden relative">
       
@@ -516,8 +651,8 @@ export default function App() {
                 </p>
               </div>
 
-              {/* Mode Selection (3 Columns) */}
-              <div className="grid grid-cols-3 gap-2.5 w-full max-w-lg mt-1">
+              {/* Mode Selection (4 Columns responsive) */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full max-w-xl mt-1">
                 <button
                   onClick={() => {
                     setGameMode('1v1');
@@ -565,217 +700,269 @@ export default function App() {
                   <span className="font-bold text-xs">1인 타임어택</span>
                   <span className="text-[9px] text-slate-500">혼자서 스피드런</span>
                 </button>
+
+                <button
+                  onClick={() => {
+                    setGameMode('online');
+                    playSound('tap');
+                  }}
+                  className={`py-3 px-2 rounded-2xl border-2 text-center transition-all flex flex-col items-center gap-1.5 ${
+                    gameMode === 'online'
+                      ? 'border-emerald-400 bg-emerald-950/40 text-emerald-200 shadow-md shadow-emerald-400/10 scale-105'
+                      : 'border-slate-800 bg-slate-950/20 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <Globe className="w-5 h-5 text-emerald-400" />
+                  <span className="font-bold text-xs">실시간 온라인</span>
+                  <span className="text-[9px] text-slate-500">방 만들기/참여</span>
+                </button>
               </div>
 
-              {/* Game difficulty selector */}
-              <div className="bg-slate-950/50 border border-slate-800/80 p-3.5 rounded-2xl w-full max-w-lg flex flex-col gap-2">
-                <div className="flex items-center gap-1.5 text-xs font-extrabold text-slate-400 justify-center">
-                  <Star className="w-3.5 h-3.5 text-amber-400 fill-current" />
-                  미션 문제 난이도 설정
-                </div>
-                <div className="grid grid-cols-4 gap-2 mt-1">
-                  {(['easy', 'normal', 'hard', 'nightmare'] as const).map((diff) => {
-                    const label = 
-                      diff === 'easy' ? '쉬움' :
-                      diff === 'normal' ? '보통' :
-                      diff === 'hard' ? '어려움' : '지옥';
-                    const hoverClass = 
-                      diff === 'easy' ? 'hover:border-green-500 hover:text-green-300' :
-                      diff === 'normal' ? 'hover:border-sky-500 hover:text-sky-300' :
-                      diff === 'hard' ? 'hover:border-orange-500 hover:text-orange-300' : 'hover:border-red-500 hover:text-red-300';
-                    const activeClass = 
-                      diff === 'easy' ? 'border-green-500 bg-green-950/40 text-green-300 font-black' :
-                      diff === 'normal' ? 'border-sky-500 bg-sky-950/40 text-sky-300 font-black' :
-                      diff === 'hard' ? 'border-orange-500 bg-orange-950/40 text-orange-300 font-black' :
-                      diff === 'nightmare' ? 'border-red-500 bg-red-950/40 text-red-400 font-black' : '';
-                    return (
-                      <button
-                        key={diff}
-                        onClick={() => {
-                          setDifficulty(diff);
-                          playSound('tap');
-                        }}
-                        className={`py-2 px-1 rounded-xl border text-xs font-bold transition-all ${
-                          difficulty === diff ? activeClass : `border-slate-800 bg-transparent text-slate-500 ${hoverClass}`
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Game Count Selector */}
-              <div className="bg-slate-950/50 border border-slate-800/80 p-3.5 rounded-2xl w-full max-w-lg flex flex-col gap-2">
-                <div className="flex items-center gap-1.5 text-xs font-extrabold text-slate-400 justify-center">
-                  <Clock className="w-3.5 h-3.5 text-emerald-400" />
-                  미니게임 수 조정
-                </div>
-                <div className="grid grid-cols-5 gap-1.5 mt-1">
-                  {([3, 5, 8, 10, 12] as const).map((count) => {
-                    return (
-                      <button
-                        key={count}
-                        onClick={() => {
-                          setGameCount(count);
-                          playSound('tap');
-                        }}
-                        className={`py-2 px-1 rounded-xl border text-xs font-extrabold transition-all ${
-                          gameCount === count
-                            ? 'border-emerald-400 bg-emerald-950/40 text-emerald-300'
-                            : 'border-slate-800 bg-transparent text-slate-500 hover:border-slate-700 hover:text-slate-300'
-                        }`}
-                      >
-                        {count === 12 ? '전체 (12)' : `${count}개`}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* AI Difficulty Selector (only visible in AI mode) */}
-              {gameMode === 'ai' && (
-                <div className="bg-slate-950/50 border border-slate-800/80 p-3.5 rounded-2xl w-full max-w-lg flex flex-col gap-2">
-                  <div className="flex items-center gap-1.5 text-xs font-extrabold text-slate-400 justify-center">
-                    <Cpu className="w-3.5 h-3.5 text-violet-400 animate-pulse" />
-                    상대 AI 봇 인공지능 난이도 설정
-                  </div>
-                  <div className="grid grid-cols-4 gap-2 mt-1">
-                    {(['easy', 'normal', 'hard', 'nightmare'] as const).map((diff) => {
-                      const label = 
-                        diff === 'easy' ? '이지' :
-                        diff === 'normal' ? '노말' :
-                        diff === 'hard' ? '하드' : '지옥';
-                      const activeClass = 
-                        diff === 'easy' ? 'border-violet-500 bg-violet-950/40 text-violet-300 font-bold' :
-                        diff === 'normal' ? 'border-indigo-500 bg-indigo-950/40 text-indigo-300 font-bold' :
-                        diff === 'hard' ? 'border-fuchsia-500 bg-fuchsia-950/40 text-fuchsia-300 font-bold' :
-                        diff === 'nightmare' ? 'border-rose-500 bg-rose-950/40 text-rose-300 font-bold' : '';
-                      return (
-                        <button
-                          key={diff}
-                          onClick={() => {
-                            setAiDifficulty(diff);
-                            playSound('tap');
-                          }}
-                          className={`py-2 px-1 rounded-xl border text-xs font-bold transition-all ${
-                            aiDifficulty === diff ? activeClass : 'border-slate-800 bg-transparent text-slate-500 hover:border-slate-700 hover:text-slate-300'
-                          }`}
-                        >
-                          {label} AI
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Screen Orientation Settings (For LG StanbyME 2 rotate feature, hide in single) */}
-              {gameMode !== 'single' && (
-                <div className="bg-slate-950/50 border border-slate-800 p-3.5 rounded-2xl w-full max-w-lg flex flex-col gap-2">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 justify-center">
-                    <Monitor className="w-3.5 h-3.5 text-sky-400" />
-                    스탠바이미 2 화면 회전 분할 설정
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 mt-1">
-                    <button
-                      onClick={() => {
-                        setOrientation('horizontal');
-                        playSound('tap');
-                      }}
-                      className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
-                        orientation === 'horizontal'
-                          ? 'border-sky-400 bg-sky-950/40 text-sky-300'
-                          : 'border-slate-800 bg-transparent text-slate-500 hover:border-slate-700'
-                      }`}
-                    >
-                      좌우 분할 (가로형)
-                    </button>
-                    <button
-                      onClick={() => {
-                        setOrientation('vertical');
-                        playSound('tap');
-                      }}
-                      className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
-                        orientation === 'vertical'
-                          ? 'border-sky-400 bg-sky-950/40 text-sky-300'
-                          : 'border-slate-800 bg-transparent text-slate-500 hover:border-slate-700'
-                      }`}
-                    >
-                      상하 분할 (세로형)
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Character Setup */}
-              <div className="bg-slate-950/50 border border-slate-800 p-4 rounded-2xl w-full max-w-lg flex flex-col gap-3.5">
-                <span className="text-xs font-black uppercase text-slate-400 tracking-wider">캐릭터(아바타) 선택</span>
-                
-                {/* Player 1 Selection */}
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center gap-1.5 text-xs text-sky-300 font-bold justify-center">
-                    <div className="w-2 h-2 rounded-full bg-sky-500" />
-                    플레이어 1 아바타
-                  </div>
-                  <div className="flex justify-center gap-2 overflow-x-auto pb-1">
-                    {AVATARS.map((av) => (
-                      <button
-                        key={av.name}
-                        onClick={() => {
-                          setP1Avatar(av);
-                          playSound('tap');
-                        }}
-                        className={`text-2xl p-2 rounded-xl border-2 transition-all ${
-                          p1Avatar.name === av.name 
-                            ? 'border-sky-500 bg-sky-950/40 scale-105 shadow-md shadow-sky-500/20' 
-                            : 'border-slate-800 bg-transparent opacity-60 hover:opacity-100 hover:border-slate-700'
-                        }`}
-                      >
-                        {av.emoji}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Player 2 Selection (only if 1v1 or AI) */}
-                {gameMode !== 'single' && (
-                  <div className="flex flex-col gap-1.5 border-t border-slate-800/80 pt-3">
-                    <div className="flex items-center gap-1.5 text-xs text-amber-300 font-bold justify-center">
-                      <div className="w-2 h-2 rounded-full bg-amber-500" />
-                      {gameMode === 'ai' ? '상대 AI 아바타' : '플레이어 2 아바타'}
+              {gameMode !== 'online' ? (
+                <>
+                  {/* Game difficulty selector */}
+                  <div className="bg-slate-950/50 border border-slate-800/80 p-3.5 rounded-2xl w-full max-w-lg flex flex-col gap-2">
+                    <div className="flex items-center gap-1.5 text-xs font-extrabold text-slate-400 justify-center">
+                      <Star className="w-3.5 h-3.5 text-amber-400 fill-current" />
+                      미션 문제 난이도 설정
                     </div>
-                    <div className="flex justify-center gap-2 overflow-x-auto pb-1">
-                      {AVATARS.map((av) => (
-                        <button
-                          key={av.name}
-                          onClick={() => {
-                            setP2Avatar(av);
-                            playSound('tap');
-                          }}
-                          className={`text-2xl p-2 rounded-xl border-2 transition-all ${
-                            p2Avatar.name === av.name 
-                              ? 'border-amber-500 bg-amber-950/40 scale-105 shadow-md shadow-amber-500/20' 
-                              : 'border-slate-800 bg-transparent opacity-60 hover:opacity-100 hover:border-slate-700'
-                          }`}
-                        >
-                          {av.emoji}
-                        </button>
-                      ))}
+                    <div className="grid grid-cols-4 gap-2 mt-1">
+                      {(['easy', 'normal', 'hard', 'nightmare'] as const).map((diff) => {
+                        const label = 
+                          diff === 'easy' ? '쉬움' :
+                          diff === 'normal' ? '보통' :
+                          diff === 'hard' ? '어려움' : '지옥';
+                        const hoverClass = 
+                          diff === 'easy' ? 'hover:border-green-500 hover:text-green-300' :
+                          diff === 'normal' ? 'hover:border-sky-500 hover:text-sky-300' :
+                          diff === 'hard' ? 'hover:border-orange-500 hover:text-orange-300' : 'hover:border-red-500 hover:text-red-300';
+                        const activeClass = 
+                          diff === 'easy' ? 'border-green-500 bg-green-950/40 text-green-300 font-black' :
+                          diff === 'normal' ? 'border-sky-500 bg-sky-950/40 text-sky-300 font-black' :
+                          diff === 'hard' ? 'border-orange-500 bg-orange-950/40 text-orange-300 font-black' :
+                          diff === 'nightmare' ? 'border-red-500 bg-red-950/40 text-red-400 font-black' : '';
+                        return (
+                          <button
+                            key={diff}
+                            onClick={() => {
+                              setDifficulty(diff);
+                              playSound('tap');
+                            }}
+                            className={`py-2 px-1 rounded-xl border text-xs font-bold transition-all ${
+                              difficulty === diff ? activeClass : `border-slate-800 bg-transparent text-slate-500 ${hoverClass}`
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
-                )}
-              </div>
 
-              {/* Play Button */}
-              <button
-                onClick={handleStartGame}
-                className="w-full max-w-xs py-3.5 bg-gradient-to-r from-cyan-500 via-sky-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 active:scale-95 text-white font-black rounded-2xl shadow-xl shadow-cyan-500/20 text-lg tracking-wider transition-all flex items-center justify-center gap-2"
-              >
-                <Play className="w-5 h-5 fill-current" />
-                게임 시작하기
-              </button>
+                  {/* Game Count Selector */}
+                  <div className="bg-slate-950/50 border border-slate-800/80 p-3.5 rounded-2xl w-full max-w-lg flex flex-col gap-2">
+                    <div className="flex items-center gap-1.5 text-xs font-extrabold text-slate-400 justify-center">
+                      <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                      미니게임 수 조정
+                    </div>
+                    <div className="grid grid-cols-5 gap-1.5 mt-1">
+                      {([3, 5, 8, 10, 12] as const).map((count) => {
+                        return (
+                          <button
+                            key={count}
+                            onClick={() => {
+                              setGameCount(count);
+                              playSound('tap');
+                            }}
+                            className={`py-2 px-1 rounded-xl border text-xs font-extrabold transition-all ${
+                              gameCount === count
+                                ? 'border-emerald-400 bg-emerald-950/40 text-emerald-300'
+                                : 'border-slate-800 bg-transparent text-slate-500 hover:border-slate-700 hover:text-slate-300'
+                            }`}
+                          >
+                            {count === 12 ? '전체 (12)' : `${count}개`}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* AI Difficulty Selector (only visible in AI mode) */}
+                  {gameMode === 'ai' && (
+                    <div className="bg-slate-950/50 border border-slate-800/80 p-3.5 rounded-2xl w-full max-w-lg flex flex-col gap-2">
+                      <div className="flex items-center gap-1.5 text-xs font-extrabold text-slate-400 justify-center">
+                        <Cpu className="w-3.5 h-3.5 text-violet-400 animate-pulse" />
+                        상대 AI 봇 인공지능 난이도 설정
+                      </div>
+                      <div className="grid grid-cols-4 gap-2 mt-1">
+                        {(['easy', 'normal', 'hard', 'nightmare'] as const).map((diff) => {
+                          const label = 
+                            diff === 'easy' ? '이지' :
+                            diff === 'normal' ? '노말' :
+                            diff === 'hard' ? '하드' : '지옥';
+                          const activeClass = 
+                            diff === 'easy' ? 'border-violet-500 bg-violet-950/40 text-violet-300 font-bold' :
+                            diff === 'normal' ? 'border-indigo-500 bg-indigo-950/40 text-indigo-300 font-bold' :
+                            diff === 'hard' ? 'border-fuchsia-500 bg-fuchsia-950/40 text-fuchsia-300 font-bold' :
+                            diff === 'nightmare' ? 'border-rose-500 bg-rose-950/40 text-rose-300 font-bold' : '';
+                          return (
+                            <button
+                              key={diff}
+                              onClick={() => {
+                                setAiDifficulty(diff);
+                                playSound('tap');
+                              }}
+                              className={`py-2 px-1 rounded-xl border text-xs font-bold transition-all ${
+                                aiDifficulty === diff ? activeClass : 'border-slate-800 bg-transparent text-slate-500 hover:border-slate-700 hover:text-slate-300'
+                              }`}
+                            >
+                              {label} AI
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Screen Orientation Settings (For LG StanbyME 2 rotate feature, hide in single) */}
+                  {gameMode !== 'single' && (
+                    <div className="bg-slate-950/50 border border-slate-800 p-3.5 rounded-2xl w-full max-w-lg flex flex-col gap-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 justify-center">
+                        <Monitor className="w-3.5 h-3.5 text-sky-400" />
+                        스탠바이미 2 화면 회전 분할 설정
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 mt-1">
+                        <button
+                          onClick={() => {
+                            setOrientation('horizontal');
+                            playSound('tap');
+                          }}
+                          className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                            orientation === 'horizontal'
+                              ? 'border-sky-400 bg-sky-950/40 text-sky-300'
+                              : 'border-slate-800 bg-transparent text-slate-500 hover:border-slate-700'
+                          }`}
+                        >
+                          좌우 분할 (가로형)
+                        </button>
+                        <button
+                          onClick={() => {
+                            setOrientation('vertical');
+                            playSound('tap');
+                          }}
+                          className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                            orientation === 'vertical'
+                              ? 'border-sky-400 bg-sky-950/40 text-sky-300'
+                              : 'border-slate-800 bg-transparent text-slate-500 hover:border-slate-700'
+                          }`}
+                        >
+                          상하 분할 (세로형)
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Character Setup */}
+                  <div className="bg-slate-950/50 border border-slate-800 p-4 rounded-2xl w-full max-w-lg flex flex-col gap-3.5">
+                    <span className="text-xs font-black uppercase text-slate-400 tracking-wider">캐릭터(아바타) 선택</span>
+                    
+                    {/* Player 1 Selection */}
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center gap-1.5 text-xs text-sky-300 font-bold justify-center">
+                        <div className="w-2 h-2 rounded-full bg-sky-500" />
+                        플레이어 1 아바타
+                      </div>
+                      <div className="flex justify-center gap-2 overflow-x-auto pb-1">
+                        {AVATARS.map((av) => (
+                          <button
+                            key={av.name}
+                            onClick={() => {
+                              setP1Avatar(av);
+                              playSound('tap');
+                            }}
+                            className={`text-2xl p-2 rounded-xl border-2 transition-all ${
+                              p1Avatar.name === av.name 
+                                ? 'border-sky-500 bg-sky-950/40 scale-105 shadow-md shadow-sky-500/20' 
+                                : 'border-slate-800 bg-transparent opacity-60 hover:opacity-100 hover:border-slate-700'
+                            }`}
+                          >
+                            {av.emoji}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Player 2 Selection (only if 1v1 or AI) */}
+                    {gameMode !== 'single' && (
+                      <div className="flex flex-col gap-1.5 border-t border-slate-800/80 pt-3">
+                        <div className="flex items-center gap-1.5 text-xs text-amber-300 font-bold justify-center">
+                          <div className="w-2 h-2 rounded-full bg-amber-500" />
+                          {gameMode === 'ai' ? '상대 AI 아바타' : '플레이어 2 아바타'}
+                        </div>
+                        <div className="flex justify-center gap-2 overflow-x-auto pb-1">
+                          {AVATARS.map((av) => (
+                            <button
+                              key={av.name}
+                              onClick={() => {
+                                setP2Avatar(av);
+                                playSound('tap');
+                              }}
+                              className={`text-2xl p-2 rounded-xl border-2 transition-all ${
+                                p2Avatar.name === av.name 
+                                  ? 'border-amber-500 bg-amber-950/40 scale-105 shadow-md shadow-amber-500/20' 
+                                  : 'border-slate-800 bg-transparent opacity-60 hover:opacity-100 hover:border-slate-700'
+                              }`}
+                            >
+                              {av.emoji}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Play Button */}
+                  <button
+                    onClick={handleStartGame}
+                    className="w-full max-w-xs py-3.5 bg-gradient-to-r from-cyan-500 via-sky-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 active:scale-95 text-white font-black rounded-2xl shadow-xl shadow-cyan-500/20 text-lg tracking-wider transition-all flex items-center justify-center gap-2"
+                  >
+                    <Play className="w-5 h-5 fill-current" />
+                    게임 시작하기
+                  </button>
+                </>
+              ) : (
+                <OnlineLobbyView
+                  localPlayerId={onlinePlayerId}
+                  room={onlineRoom}
+                  onRoomUpdated={(r) => {
+                    setOnlineRoom(r);
+                    if (r) {
+                      const me = r.players[onlinePlayerId];
+                      if (me) {
+                        setP1Avatar({ emoji: me.emoji, name: me.name });
+                      }
+                    }
+                  }}
+                  onStartGame={() => {
+                    if (onlineRoom?.id) {
+                      startOnlineGame(onlineRoom.id);
+                    }
+                  }}
+                  onLeaveRoom={() => {
+                    if (onlineRoom?.id) {
+                      leaveRoom(onlineRoom.id, onlinePlayerId);
+                    }
+                    setOnlineRoom(null);
+                  }}
+                  difficulty={difficulty}
+                  onDifficultyChange={(diff) => {
+                    setDifficulty(diff);
+                    if (onlineRoom?.id) {
+                      updateRoomDifficulty(onlineRoom.id, diff);
+                    }
+                  }}
+                />
+              )}
 
             </motion.div>
           )}
@@ -843,12 +1030,12 @@ export default function App() {
 
               {/* Splitscreen Split Box Grid */}
               <div className={`flex-grow w-full h-full flex ${
-                gameMode !== 'single' && orientation === 'vertical' ? 'flex-col' : 'flex-row'
+                gameMode !== 'single' && gameMode !== 'online' && orientation === 'vertical' ? 'flex-col' : 'flex-row'
               }`}>
                 
                 {/* --------------------- PLAYER 1 SCREEN SECTION --------------------- */}
                 <div className={`relative flex flex-col h-full bg-slate-900 ${
-                  gameMode !== 'single'
+                  gameMode !== 'single' && gameMode !== 'online'
                     ? orientation === 'vertical'
                       ? 'w-full h-1/2 border-b-4 border-slate-950'
                       : 'w-1/2 h-full border-r-4 border-slate-950'
@@ -878,28 +1065,37 @@ export default function App() {
                   </div>
 
                   {/* Play Zone */}
-                  <div className="flex-grow overflow-hidden bg-sky-950/10 p-2">
-                    {p1.currentMissionIndex < p1.missions.length ? (
-                      <MissionRenderer
-                        mission={p1.missions[p1.currentMissionIndex]}
-                        onComplete={() => handleMissionComplete(1, p1.currentMissionIndex)}
-                        onFail={() => handleMissionFail(1, p1.currentMissionIndex)}
-                        color="blue"
-                        isStunned={p1Stunned}
+                  <div className="flex-grow overflow-hidden bg-sky-950/10 p-2 flex flex-col gap-2">
+                    {gameMode === 'online' && onlineRoom && (
+                      <OnlineTrack 
+                        players={Object.values(onlineRoom.players) as OnlinePlayer[]}
+                        localPlayerId={onlinePlayerId}
+                        totalMissions={20}
                       />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center h-full text-center p-4">
-                        <Trophy className="w-16 h-16 text-yellow-400 mb-2 animate-bounce" />
-                        <h3 className="text-2xl font-black text-white">미션 완료! 🏁</h3>
-                        <p className="text-sm text-slate-400 mt-1">상대방의 결과가 끝날 때까지 대기하세요...</p>
-                        <span className="font-mono text-3xl font-extrabold text-sky-400 mt-4">{p1.totalTime.toFixed(2)}초</span>
-                      </div>
                     )}
+                    <div className="flex-grow overflow-hidden relative">
+                      {p1.currentMissionIndex < p1.missions.length ? (
+                        <MissionRenderer
+                          mission={p1.missions[p1.currentMissionIndex]}
+                          onComplete={() => handleMissionComplete(1, p1.currentMissionIndex)}
+                          onFail={() => handleMissionFail(1, p1.currentMissionIndex)}
+                          color="blue"
+                          isStunned={p1Stunned}
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-center p-4">
+                          <Trophy className="w-16 h-16 text-yellow-400 mb-2 animate-bounce" />
+                          <h3 className="text-2xl font-black text-white">미션 완료! 🏁</h3>
+                          <p className="text-sm text-slate-400 mt-1">상대방의 결과가 끝날 때까지 대기하세요...</p>
+                          <span className="font-mono text-3xl font-extrabold text-sky-400 mt-4">{p1.totalTime.toFixed(2)}초</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 {/* --------------------- PLAYER 2 SCREEN SECTION (Human / AI) --------------------- */}
-                {gameMode !== 'single' && (
+                {gameMode !== 'single' && gameMode !== 'online' && (
                   <div className={`relative flex flex-col h-full bg-slate-900 ${
                     orientation === 'vertical' ? 'w-full h-1/2' : 'w-1/2 h-full'
                   }`}>
@@ -976,14 +1172,51 @@ export default function App() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="w-full max-w-4xl px-4 py-8 flex flex-col items-center justify-center gap-6 overflow-y-auto max-h-[92vh] select-none"
             >
-              {/* Confetti & Winner Header */}
-              <div className="text-center flex flex-col items-center gap-2">
-                <span className="text-6xl animate-bounce">🏆</span>
-                <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white mt-2">
-                  {getWinnerInfo().text}
-                </h1>
-                <p className="text-xs text-slate-400">방과후 스피드 대격돌이 완료되었습니다!</p>
-              </div>
+              {gameMode === 'online' && onlineRoom ? (
+                <div className="w-full flex flex-col items-center gap-6">
+                  {/* Confetti & Winner Header */}
+                  <div className="text-center flex flex-col items-center gap-2">
+                    <span className="text-6xl animate-bounce">🏆</span>
+                    <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white mt-2">
+                      실시간 대결 종료!
+                    </h1>
+                    <p className="text-xs text-slate-400">온라인 레이스 결과 분석 완료</p>
+                  </div>
+
+                  <OnlinePodium 
+                    players={Object.values(onlineRoom.players) as OnlinePlayer[]} 
+                    localPlayerId={onlinePlayerId} 
+                  />
+
+                  {/* Restart controls for online */}
+                  <div className="flex flex-col sm:flex-row gap-3 w-full max-w-md mt-4">
+                    <button
+                      onClick={handleOnlineLeaveRoom}
+                      className="flex-1 py-3.5 bg-red-950/40 hover:bg-red-900/40 text-red-200 font-extrabold rounded-2xl border border-red-900/30 text-center transition-all flex items-center justify-center gap-1.5"
+                    >
+                      방 나가기 (메인 메뉴)
+                    </button>
+                    {onlineRoom.hostId === onlinePlayerId && (
+                      <button
+                        onClick={handleOnlineReturnLobby}
+                        className="flex-1 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 active:scale-95 text-white font-black rounded-2xl shadow-lg shadow-emerald-500/20 text-center transition-all flex items-center justify-center gap-1.5"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                        대기실로 이동 (재대결)
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Confetti & Winner Header */}
+                  <div className="text-center flex flex-col items-center gap-2">
+                    <span className="text-6xl animate-bounce">🏆</span>
+                    <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white mt-2">
+                      {getWinnerInfo().text}
+                    </h1>
+                    <p className="text-xs text-slate-400">방과후 스피드 대격돌이 완료되었습니다!</p>
+                  </div>
 
               {/* Speed Record summary card */}
               <div className="grid grid-cols-2 gap-4 w-full max-w-lg">
@@ -1106,6 +1339,8 @@ export default function App() {
                   재대결 하기!
                 </button>
               </div>
+            </>
+          )}
 
             </motion.div>
           )}

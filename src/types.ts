@@ -23,5 +23,5 @@ export type ScreenOrientation = 'horizontal' | 'vertical';
 export type GamePhase = 'lobby' | 'countdown' | 'playing' | 'gameover';
 export type Difficulty = 'easy' | 'normal' | 'hard' | 'nightmare';
 export type AIDifficulty = 'easy' | 'normal' | 'hard' | 'nightmare';
-export type GameMode = '1v1' | 'single' | 'ai';
+export type GameMode = '1v1' | 'single' | 'ai' | 'online';
 
